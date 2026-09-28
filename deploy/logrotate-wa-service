@@ -1,0 +1,12 @@
+# Dipasang pemilik: sudo cp ke /etc/logrotate.d/wa-service (menggantikan entri service.log lama).
+/var/log/wa-service/*.log {
+    su oyod adm
+    daily
+    rotate 14
+    compress
+    delaycompress
+    missingok
+    notifempty
+    maxsize 50M
+    copytruncate
+}

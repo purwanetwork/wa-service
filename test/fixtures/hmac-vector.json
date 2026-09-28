@@ -1,0 +1,6 @@
+{
+  "secret": "vektor-uji-hmac-bukan-rahasia-0123456789abcdef",
+  "timestamp": 1790000000,
+  "body": "{\"node\":\"wa-uji\",\"boot_id\":\"00000000-0000-4000-8000-000000000000\",\"events\":[{\"id\":\"11111111-1111-4111-8111-111111111111\",\"seq\":1790000000000000,\"at\":\"2026-09-21T14:13:20.000Z\",\"type\":\"message.ack\",\"session\":\"s0123456789abcdef\",\"ref\":\"42\",\"message_id\":\"3EB0ABCDEF\",\"ack\":\"delivered\",\"error\":null}]}",
+  "header": "t=1790000000,v1=8cdc3da1c8a3b25925ad730d8c8a74792f6f414a43ef66e298fa29a82a477590"
+}

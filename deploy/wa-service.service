@@ -1,0 +1,38 @@
+# Unit wa-service multi-sesi (dipasang pemilik: sudo cp ke /etc/systemd/system/).
+# deploy/install.sh merender salinan unit ini untuk user/folder lain (VM baru).
+[Unit]
+Description=wa-service (WhatsApp multi-sesi)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=oyod
+Group=oyod
+WorkingDirectory=/var/www/wa-service
+ExecStart=/usr/bin/node index.js
+Restart=always
+RestartSec=5
+# SIGTERM = socket ditutup tanpa logout, lease dilepas, spool disimpan.
+KillSignal=SIGTERM
+TimeoutStopSec=20
+# File baru (sesi, state) 0600/0700. Log 0640 di-chmod oleh proses sendiri.
+UMask=0077
+# Log aplikasi ditulis proses ke /var/log/wa-service; sisa console/stack trace ke journald.
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+ReadWritePaths=/var/www/wa-service/sessions /var/www/wa-service/state /var/log/wa-service
+MemoryMax=1G
+
+[Install]
+WantedBy=multi-user.target
