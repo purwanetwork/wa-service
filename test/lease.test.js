@@ -151,3 +151,64 @@ test('kunci lokal menolak: lease tidak diminta dan socket tidak dibuat', async (
   assert.equal(sockets.length, 0);
   assert.deepEqual(calls, []);
 });
+
+// Callback status hanya dari pemegang sesi (temuan uji lab MT4 (a)): proses
+// yang ditolak tidak boleh menimpa status pemegang di aplikasi.
+const statusEvents = (events) => events.filter((event) => event.type === 'session.status').map((event) => event.status);
+
+test('TW1 kunci lokal menolak: status lease_denied hanya lokal, TIDAK ada callback, juga saat stop', async () => {
+  const lock = { ...noopLock(), acquire() { return { ok: false, reason: 'sesi dipegang proses wa-service lain di mesin ini' }; } };
+  const { session, events } = makeSession({ lock });
+  await session.connect();
+
+  assert.equal(session.status, 'lease_denied');
+  assert.equal(session.snapshot().reason, 'sesi dipegang proses wa-service lain di mesin ini');
+  assert.deepEqual(statusEvents(events), []);
+
+  await session.stop();
+
+  assert.equal(session.status, 'lease_denied');
+  assert.deepEqual(statusEvents(events), []);
+});
+
+test('TW2 lease ditolak aplikasi: satu callback lease_denied, stop TIDAK mengirim offline', async () => {
+  const lease = { mode: 'app', async acquire() { return { granted: false, reason: 'dipegang wa-lama', transient: false }; }, async renew() { return { granted: true }; }, async release() { return {}; } };
+  const { session, events } = makeSession({ lease });
+  await session.connect();
+
+  assert.deepEqual(statusEvents(events), ['lease_denied']);
+  assert.equal(events.at(-1).reason, 'dipegang wa-lama');
+
+  await session.stop();
+
+  assert.deepEqual(statusEvents(events), ['lease_denied']);
+});
+
+test('TW3 lease dicabut saat online: callback lease_denied, stop sesudahnya TIDAK mengirim offline', async () => {
+  let renewReply = { granted: true, transient: false };
+  const lease = { mode: 'app', async acquire() { return { granted: true }; }, async renew() { return renewReply; }, async release() { return {}; } };
+  const { session, sockets, timers, events } = makeSession({ lease });
+  await session.connect();
+  sockets[0].open();
+  await tick();
+  renewReply = { granted: false, reason: 'dipegang wa-baru', transient: false };
+  timers.runAll();
+  await tick();
+
+  assert.deepEqual(statusEvents(events), ['connecting', 'online', 'lease_denied']);
+
+  await session.stop();
+
+  assert.deepEqual(statusEvents(events), ['connecting', 'online', 'lease_denied']);
+});
+
+test('TW4 regresi: sesi yang dipegang tetap mengirim satu offline "wa-service dihentikan" saat stop', async () => {
+  const { session, sockets, events } = makeSession();
+  await session.connect();
+  sockets[0].open();
+  await tick();
+  await session.stop();
+
+  assert.deepEqual(statusEvents(events), ['connecting', 'online', 'offline']);
+  assert.equal(events.at(-1).reason, 'wa-service dihentikan');
+});

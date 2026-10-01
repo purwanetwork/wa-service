@@ -116,6 +116,12 @@ export class Session {
     return isLoggedIn(this.readCreds());
   }
 
+  /**
+   * extra.silent: status hanya lokal (/status, /health, log), TIDAK dikirim
+   * sebagai callback. Dipakai untuk penolakan kunci lokal: proses kedua di
+   * mesin yang sama hampir pasti ber-NODE_NAME sama dengan pemegang, jadi
+   * aplikasi tidak bisa membedakan statusnya dari status pemegang.
+   */
   setStatus(status, extra = {}) {
     const changed = status !== this.status || (extra.jid !== undefined && extra.jid !== this.jid);
     this.status = status;
@@ -133,7 +139,12 @@ export class Session {
 
     if (changed) {
       this.since = this.deps.now();
-      this.logger.info({ status, reason: this.reason }, 'status sesi');
+      this.logger.info({ status, reason: this.reason, callback: !extra.silent }, 'status sesi');
+
+      if (extra.silent) {
+        return;
+      }
+
       // QR dan kode pairing TIDAK pernah ikut callback (diambil langsung lewat /status).
       this.deps.emit({ type: 'session.status', session: this.key, status, jid: this.jid, name: this.name, reason: this.reason });
     }
@@ -173,8 +184,10 @@ export class Session {
 
     const lock = this.deps.lock.acquire();
 
+    // Sesi dipegang proses lain di mesin ini: status tidak dikirim ke aplikasi
+    // (lease_denied dari aplikasi di bawah tetap dikirim, disaring per node).
     if (!lock.ok) {
-      this.setStatus('lease_denied', { reason: lock.reason });
+      this.setStatus('lease_denied', { reason: lock.reason, silent: true });
 
       return;
     }
@@ -640,7 +653,9 @@ export class Session {
     sock?.end(undefined);
     this.failAckWaiters();
 
-    if (!['logged_out', 'blocked', 'replaced'].includes(this.status)) {
+    // lease_denied = sesi dipegang node/proses lain: "offline" dari sini akan
+    // menimpa status pemegang di aplikasi.
+    if (!['logged_out', 'blocked', 'replaced', 'lease_denied'].includes(this.status)) {
       this.setStatus('offline', { reason: 'wa-service dihentikan' });
     }
 
