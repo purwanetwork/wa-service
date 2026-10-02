@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import QRCode from 'qrcode';
 import makeWASocket, { fetchLatestBaileysVersion, generateMessageIDV2, useMultiFileAuthState } from '@whiskeysockets/baileys';
 import { CallbackSender } from './src/callbackSender.js';
+import { isoWithOffset } from './src/clock.js';
 import { loadConfig } from './src/config.js';
 import { createLeaseClient, LEASE_TTL_SECONDS, leaseUrlFrom } from './src/lease.js';
 import { baileysLogger, createLogger, wrapConsole } from './src/logger.js';
@@ -30,7 +31,7 @@ try {
 const logger = createLogger({ logDir: config.logDir, level: config.logLevel });
 const consoleGuard = wrapConsole(logger);
 const bootId = crypto.randomUUID();
-const startedAt = new Date().toISOString();
+const startedAt = isoWithOffset(Date.now());
 
 const callbackSender = new CallbackSender({
   url: config.callbackUrl,

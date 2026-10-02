@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { isoWithOffset } from './clock.js';
 
 /**
  * Satu sesi = satu nomor WhatsApp tertaut = satu socket Baileys, dengan
@@ -100,7 +101,7 @@ export class Session {
       jid: this.jid,
       name: this.name,
       reason: this.reason,
-      since: new Date(this.since).toISOString(),
+      since: isoWithOffset(this.since),
     };
   }
 

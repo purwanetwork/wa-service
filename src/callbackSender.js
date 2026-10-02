@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
+import { isoWithOffset } from './clock.js';
 import { postJson } from './httpTransport.js';
 import { readJson, writeJsonAtomic } from './jsonFile.js';
 import { sign, SIGNATURE_HEADER } from './signature.js';
@@ -54,7 +55,7 @@ export class CallbackSender {
   }
 
   enqueue(event) {
-    this.events.push({ id: crypto.randomUUID(), seq: this.nextSeq(), at: new Date(this.now()).toISOString(), ...event });
+    this.events.push({ id: crypto.randomUUID(), seq: this.nextSeq(), at: isoWithOffset(this.now()), ...event });
 
     while (this.events.length > this.maxEvents) {
       this.events.shift();
@@ -128,8 +129,8 @@ export class CallbackSender {
     return {
       pending: this.events.length,
       dropped: this.dropped,
-      last_ok_at: this.lastOkAt ? new Date(this.lastOkAt).toISOString() : null,
-      last_error_at: this.lastErrorAt ? new Date(this.lastErrorAt).toISOString() : null,
+      last_ok_at: this.lastOkAt ? isoWithOffset(this.lastOkAt) : null,
+      last_error_at: this.lastErrorAt ? isoWithOffset(this.lastErrorAt) : null,
     };
   }
 
