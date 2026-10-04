@@ -41,6 +41,16 @@ export function isLoggedIn(creds) {
   return Boolean(creds?.me && creds?.account);
 }
 
+/**
+ * Jam receipt WhatsApp (detik epoch; Baileys mengisi 0 bila tidak ada) menjadi
+ * ISO ber-offset zona aplikasi, atau null bila tidak ada/tidak sah.
+ */
+export function receiptTime(seconds) {
+  const value = Number(seconds?.toNumber ? seconds.toNumber() : seconds);
+
+  return Number.isFinite(value) && value > 0 ? isoWithOffset(value * 1000) : null;
+}
+
 export function jidNumber(jid) {
   const match = /^(\d+)/.exec(String(jid ?? ''));
 
@@ -91,6 +101,7 @@ export class Session {
     this.texts = new Map();
     this.ackWaiters = new Map();
     this.recentAcks = new Map();
+    this.reportedErrors = new Map();
   }
 
   snapshot() {
@@ -573,7 +584,7 @@ export class Session {
 
     if (node.attrs.error) {
       this.ackWaiters.get(id)?.(false);
-      this.emitAck(id, 'error', String(node.attrs.error));
+      this.emitError(id, node.attrs.error);
 
       return;
     }
@@ -588,6 +599,13 @@ export class Session {
     this.emitAck(id, 'server', null);
   }
 
+  /**
+   * Receipt untuk pesan kita (fromMe). Status 0 (ERROR) dipancarkan Baileys
+   * dari ack server yang ditolak dengan kode di messageStubParameters[0]
+   * (B-3a). Jam laporan = messageTimestamp receipt (detik, jam server
+   * WhatsApp), bukan jam diproses: receipt yang tertahan saat wa-service mati
+   * tetap membawa jam kejadiannya (B-3b).
+   */
   onMessagesUpdate(updates) {
     for (const { key, update } of updates ?? []) {
       if (!key?.fromMe || update?.status === undefined || update?.status === null) {
@@ -596,13 +614,34 @@ export class Session {
 
       const ack = RECEIPT_STATUS[update.status];
 
-      if (ack) {
-        this.emitAck(key.id, ack, ack === 'error' ? 'status error' : null);
+      if (ack === 'error') {
+        this.emitError(key.id, update.messageStubParameters?.[0]);
+      } else if (ack) {
+        this.emitAck(key.id, ack, null, receiptTime(update.messageTimestamp));
       }
     }
   }
 
-  emitAck(messageId, ack, error) {
+  /**
+   * Penolakan server untuk satu pesan, dilaporkan SEKALI dengan kodenya.
+   * Baileys memancarkan messages.update (status 0, kode di stub) dan
+   * CB:ack (attrs.error) untuk penolakan yang sama, urutannya bisa dua arah.
+   */
+  emitError(messageId, code) {
+    if (!messageId || this.reportedErrors.has(messageId)) {
+      return;
+    }
+
+    this.reportedErrors.set(messageId, this.deps.now());
+
+    if (this.reportedErrors.size > 1000) {
+      this.reportedErrors.delete(this.reportedErrors.keys().next().value);
+    }
+
+    this.emitAck(messageId, 'error', code === undefined || code === null || code === '' ? 'status error' : String(code));
+  }
+
+  emitAck(messageId, ack, error, at = null) {
     const ref = this.deps.idempotency.refFor(messageId);
 
     // Pesan tanpa ref (bukan dari aplikasi) tidak pernah dilaporkan.
@@ -610,7 +649,8 @@ export class Session {
       return;
     }
 
-    this.deps.emit({ type: 'message.ack', session: this.key, ref, message_id: messageId, ack, error });
+    // at hanya ikut bila diketahui; tanpa at, CallbackSender memakai jam sekarang.
+    this.deps.emit({ type: 'message.ack', session: this.key, ref, message_id: messageId, ack, error, ...(at ? { at } : {}) });
   }
 
   async logout() {
